@@ -1,0 +1,144 @@
+---
+title: "Avery New Regression"
+author: "Yvette Peng"
+date: "2/16/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(olsrr)
+library(glmnet)
+```
+
+```{r}
+avery_reg_table = read.csv("Avery_Regression_Table.csv")
+names(avery_reg_table)
+```
+
+```{r}
+delta_rank = avery_reg_table$delta_rank	      # in xyz currency
+xx = as.data.frame(avery_reg_table[ , 8:23])
+```
+
+```{r}
+model<-lm(delta_rank ~., data=xx)       # fit lm with 12 variables
+summary(model)
+```
+
+```{r}
+inflate = ols_vif_tol(model)
+inflate
+```
+```{r}
+names(xx)
+```
+
+Fix Multicolinearity: do PCR on conceptually related variables
+```{r}
+## star rating principal component
+star_cov = cov(xx[ ,1:4])       
+out = eigen(star_cov)
+weights = as.matrix(out$vectors[,1])
+star_pc = as.matrix(xx[ ,1:4]) %*% weights
+```
+
+```{r}
+## review quantity principal component
+review_num_cov = cov(xx[ ,5:7])       
+out = eigen(review_num_cov)
+weights = as.matrix(out$vectors[,1])
+review_num_pc = as.matrix(xx[ , 5:7]) %*% weights
+```
+
+```{r}
+## verified pc
+verified_cov = cov(xx[ , 9:10])
+out = eigen(verified_cov)
+weights = as.matrix(out$vectors[,1]) 
+verified_pc = as.matrix(xx[ , 9:10]) %*% weights
+```
+
+```{r}
+## price  pc
+price_cov = cov(xx[ , 14:15])
+out = eigen(price_cov)
+weights = as.matrix(out$vectors[,1]) 
+price_pc = as.matrix(xx[ , 14:15]) %*% weights
+```
+
+
+```{r}
+new_xx=cbind(star_pc, review_num_pc, xx[,8], verified_pc, xx[ , 11:13], price_pc, xx[,16]) # create new x matrix by replacing correlated variables with the principal component
+
+colnames(new_xx) <-c("Star Rating", "Review Volume", "Avg Word Count", "Verified", "Avg Word Count Recent 10", "Num One Star in a Month", "Num Five Star in a Month", "Price", "Non-anonimous Author")
+
+new_xx=as.matrix(new_xx)
+```
+
+```{r}
+model2<-lm(delta_rank ~ new_xx)
+summary(model2)
+```
+
+```{r}
+inflate2=ols_vif_tol(model2)   
+inflate2
+```
+```{r}
+df_xx <- as.data.frame(new_xx)			# need to use data frame, not data matrix
+model3 <- lm(delta_rank ~., data=df_xx)
+summary(model3)
+ols_step_both_p(model3)
+```
+
+```{r}
+inflate
+```
+
+
+```{r}
+new_xx2 = xx[ , c(1,3,5,6,10,11,12,16)]
+new_xx2 = as.matrix(new_xx2)
+model4 <- lm(delta_rank ~ new_xx2)
+summary(model4)
+```
+
+```{r}
+inflate3=ols_vif_tol(model4)
+inflate3
+```
+
+```{r}
+df_xx2 <- as.data.frame(new_xx2)			# need to use data frame, not data matrix
+model5 <- lm(delta_rank ~., data=df_xx2)
+summary(model5)
+ols_step_both_p(model5)
+```
+
+```{r}
+xx_mat = as.matrix(xx)
+cvlasso=cv.glmnet(xx_mat, delta_rank, type.measure="mse", nfolds = 10)    # 10-fold cross-validation
+plot(cvlasso, main = "Select Best Lambda")								# plot of MSE vs Lambda
+lam_est = cvlasso$lambda.min											# best lambda --> one that minimizes mse
+```
+
+
+```{r}
+out.lasso = glmnet(xx_mat, delta_rank, alpha = 1, lambda = lam_est)
+```
+
+
+```{r}
+coef(out.lasso)
+```
+
+
+
+
+
+
+
+
+
+
